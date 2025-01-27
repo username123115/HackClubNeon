@@ -1,3 +1,8 @@
+"""
+Editor usage:
+
+Paste this file into the Neon editor and then upload assets/5x7.bdf
+"""
 import time
 import random
 import displayio
