@@ -36,15 +36,25 @@ consoleB = label.Label(font, text = ">", color = B_INACTIVE)
 consoleB.x = 35
 consoleB.y = 32 - 7
 
-core_display = displayio.Bitmap(width = 64, height = 25, value_count = 8)
+
+colors = 0x50CE99, 0x4BD2C7, 0xFF531F, 0xFB2335, 0xF6287E, 0xF22CC0, 0xDD31ED, 0x9E35E9, 0x643AE4, 0x3E4BE0, 0x4382DB, 0x47B3D7
+core_palette = displayio.Palette(len(colors))
+for i, color in enumerate(colors):
+    core_palette[i] = color
+
+core_bitmap = displayio.Bitmap(width = 64, height = 25, value_count = len(colors))
+
+core_tile = displayio.TileGrid(core_bitmap, pixel_shader = core_palette)
 
 #following the corewar suggestions
 # number of bits:   4      2     2  12  12
 # fields:          type   mA    mB   A   B
 
 
+root.append(core_tile)
 root.append(consoleA)
 root.append(consoleB)
+
 
 display.show(root)
 class Instruction:
@@ -86,11 +96,16 @@ class Core:
     GET_A = True
     GET_B = False
 
-    def __init__(self, grid_x, grid_y):
-        self.x = grid_x
-        self.y = grid_y
-        self.length = grid_x * grid_y
+    def __init__(self, bitmap, text_a, text_b):
+        self.bitmap = bitmap
+        self.x = bitmap.width
+        self.y = bitmap.height
+
+        self.length = self.x * self.y
         self.memory = [0 for _ in range(self.length)]
+
+        self.text_a = text_a
+        self.text_b = text_b
 
         self.ip_a = IP(self.length)
         self.ip_b = IP(self.length)
@@ -144,6 +159,19 @@ class Core:
         else:
             return None
 
+    #disassemble current instruction, doesn't check for valid types
+    def dissasemble(self):
+        mnemonics = ["DAT", "MOV", "ADD", "SUB", "JMP", "JMZ", "DJZ", "CMP"]
+        op = self.instruction.opcode
+        if op < len(mnemonics):
+            mnemonic = mnemonics[op]
+        else:
+            mnemonic = "???"
+        modes = "# @?"
+        a = modes[self.instruction.mode_a] + str(self.instruction.a)
+        b = modes[self.instruction.mode_b] + str(self.instruction.b)
+        return f"{mnemonic} {a} {b}"
+
     def update(self):
         if self.run_a:
             self.cur = self.ip_a
@@ -158,6 +186,13 @@ class Core:
         self.aa = self.field_address(GET_A)
         self.ab = self.field_address(GET_B)
 
+        if self.instruction.opcode in self.instructions:
+            text = self.dissasemble()
+            self.instructions[self.instruction.opcode]()
+
+        else:
+            self.violated = True
+
 
         #TODO: Write win/lose logic
         if self.violated:
@@ -171,6 +206,8 @@ class Core:
 
         # next turn
         self.run_a = not self.run_a
+
+        return True
 
     def mov(self):
         v = self.a
