@@ -49,11 +49,21 @@ for i, color in enumerate(colors):
 background_palette = displayio.Palette(1)
 background_palette[0] = 0x202025
 
-core_bitmap = displayio.Bitmap(width = 64, height = 16, value_count = len(colors))
+status_palette = displayio.Palette(3)
+status_palette.make_transparent(0)
+status_palette[1] = 0x4BD2C7
+status_palette[2] = 0xFF531F
+
+
+CORE_HEIGHT = 16
+CORE_WIDTH = 64
+core_bitmap = displayio.Bitmap(width = CORE_WIDTH, height = CORE_HEIGHT, value_count = len(colors))
+status_bitmap = displayio.Bitmap(width = CORE_WIDTH, height = CORE_HEIGHT, value_count = 3)
 background = displayio.Bitmap(width = 64, height = 32 - core_bitmap.height, value_count = 1)
 
 core_tile = displayio.TileGrid(core_bitmap, pixel_shader = core_palette)
 background_tile = displayio.TileGrid(background, pixel_shader = background_palette, y = core_bitmap.height)
+status_tile = displayio.TileGrid(status_bitmap, pixel_shader = status_palette)
 
 #following the corewar suggestions
 # number of bits:   4      2     2  12  12
@@ -62,6 +72,7 @@ background_tile = displayio.TileGrid(background, pixel_shader = background_palet
 
 root.append(core_tile)
 root.append(background_tile)
+root.append(status_tile)
 root.append(consoleA)
 root.append(consoleB)
 
@@ -107,8 +118,9 @@ class Core:
     GET_A = True
     GET_B = False
 
-    def __init__(self, bitmap, text_a, text_b):
+    def __init__(self, bitmap, status, text_a, text_b):
         self.bitmap = bitmap
+        self.status = status
         self.x = bitmap.width
         self.y = bitmap.height
 
@@ -122,6 +134,12 @@ class Core:
         self.ip_b = IP(self.length)
         self.cur = self.ip_a
         self.run_a = True
+
+        self.xip_a = None
+        self.xip_b = None
+
+
+        self.ended = False
 
         self.instruction = None
         self.jumping = False
@@ -233,10 +251,32 @@ class Core:
 
 
     def update(self):
+        if self.ended:
+            if self.run_a:
+                winner = self.text_a
+            else:
+                winner = self.text_b
+            # goofy color rotate
+            color = winner.color
+            lsb = color & 1
+            new = (lsb << 23) | (color >> 1)
+            winner.color = new
+
+
+            return
+
         if self.run_a:
             self.cur = self.ip_a
+            if self.xip_a:
+                self.status[self.xip_a] = 0
+            self.xip_a = self.cur.ip
+            self.status[self.xip_a] = 1
         else:
             self.cur = self.ip_b
+            if self.xip_b:
+                self.status[self.xip_b] = 0
+            self.xip_b = self.cur.ip
+            self.status[self.xip_b] = 2
 
         self.instruction = Instruction(self.memory[self.cur.ip])
 
@@ -266,7 +306,15 @@ class Core:
 
         #TODO: Write win/lose logic
         if self.violated:
-            pass
+            self.ended = True
+            if self.run_a:
+                self.text_a.color = A_INACTIVE
+                self.text_b.color = B_ACTIVE
+                self.text_b.text = "WIN"
+            else:
+                self.text_a.color = A_ACTIVE
+                self.text_b.color = B_INACTIVE
+                self.text_a.text = "WIN"
 
         # advance to next instruction, then allow other process to execute
         if self.jumping:
@@ -358,7 +406,7 @@ class Core:
 dwarf = [0x1, 0x1000000, 0x21004fff, 0x12000ffe, 0x41000ffe]
 
 
-core = Core(core_bitmap, consoleA, consoleB)
+core = Core(core_bitmap, status_bitmap, consoleA, consoleB)
 core.load_players(dwarf, dwarf)
 
 end = time.monotonic()
@@ -369,7 +417,7 @@ while True:
     dt = begin - end
     accum += dt
 
-    if (accum >= 0.2):
+    if (accum >= 0.1):
         accum = 0
         core.update()
 
