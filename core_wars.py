@@ -2,19 +2,42 @@ import time
 import random
 import displayio
 
-from blinka_displayio_pygamedisplay import PyGameDisplay
 from adafruit_bitmap_font import bitmap_font
 from adafruit_display_text import label
 
-import pygame
-pygame.init()
+# Switch between using pygame wrapper and RGBMatrix
+USE_PYGAME = False
 
-font = bitmap_font.load_font("assets/5x7.bdf")
+if USE_PYGAME:
+    from blinka_displayio_pygamedisplay import PyGameDisplay
+    import pygame
+    pygame.init()
 
-SCALE = 12
-display = PyGameDisplay(width=64 * SCALE, height=32 * SCALE)
+    SCALE = 12
+    display = PyGameDisplay(width=64 * SCALE, height=32 * SCALE)
+    root = displayio.Group(scale = SCALE)
+    display.show(root)
 
-root = displayio.Group(scale = SCALE)
+    font = bitmap_font.load_font("assets/5x7.bdf")
+
+else:
+    import board
+    import framebufferio
+    import rgbmatrix
+    matrix = rgbmatrix.RGBMatrix(
+    width=64, height=32, bit_depth=8,
+    rgb_pins=[board.D6, board.D5, board.D9, board.D11, board.D10, board.D12],
+    addr_pins=[board.A5, board.A4, board.A3, board.A2],
+    clock_pin=board.D13, latch_pin=board.D0, output_enable_pin=board.D1)
+    display = framebufferio.FramebufferDisplay(matrix, auto_refresh=False)
+    display.auto_refresh = True
+
+    font = bitmap_font.load_font("5x7.bdf")
+
+    root = displayio.Group()
+    display.root_group = root
+
+
 
 A_ACTIVE = 0xb36b30
 A_INACTIVE = 0xab7549
@@ -30,6 +53,10 @@ INSTRUCTION_COLOR_OFFSET = 2
 INITIALIZED_DATA_COLOR_OFFSET = INSTRUCTION_COLOR_OFFSET + 8
 # grids can alternate colors everytime they've been written
 INITIALIZED_DATA_COLOR_COUNT = 2
+
+CORE_HEIGHT = 16
+CORE_WIDTH = 64
+LIMIT = 1 << 12
 
 
 consoleA = label.Label(font, text = ">", color = A_ACTIVE)
@@ -55,8 +82,6 @@ status_palette[1] = 0x4BD2C7
 status_palette[2] = 0xFF531F
 
 
-CORE_HEIGHT = 16
-CORE_WIDTH = 64
 core_bitmap = displayio.Bitmap(width = CORE_WIDTH, height = CORE_HEIGHT, value_count = len(colors))
 status_bitmap = displayio.Bitmap(width = CORE_WIDTH, height = CORE_HEIGHT, value_count = 3)
 background = displayio.Bitmap(width = 64, height = 32 - core_bitmap.height, value_count = 1)
@@ -76,9 +101,7 @@ root.append(status_tile)
 root.append(consoleA)
 root.append(consoleB)
 
-LIMIT = 1 << 12
 
-display.show(root)
 class Instruction:
     def __init__(self, memory):
         self.opcode = (memory >> 28) & 0xf
@@ -417,18 +440,15 @@ while True:
     dt = begin - end
     accum += dt
 
-    if (accum >= 0.1):
+    if (accum >= 0.05):
         accum = 0
         core.update()
 
 
-    for event in pygame.event.get():
-        if event.type == pygame.QUIT:
-            pygame.quit()
-            exit()
+    if USE_PYGAME:
+        for event in pygame.event.get():
+            if event.type == pygame.QUIT:
+                pygame.quit()
+                exit()
     end = time.monotonic()
     time.sleep(0.01)
-
-
-
-
