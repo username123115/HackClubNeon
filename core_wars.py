@@ -98,6 +98,7 @@ class Core:
         self.run_a = True
 
         self.instruction = None
+        self.jumping = False
 
         # Executed a bad instruction?
         self.violated = False
@@ -148,20 +149,24 @@ class Core:
             pass
 
         # advance to next instruction, then allow other process to execute
-        self.cur.incr(1)
+        if self.jumping:
+            self.jumping = False
+        else:
+            self.cur.incr(1)
+
         # next turn
         self.run_a = not self.run_a
 
     def mov(self):
-        v = self.field_value(self.GET_A)
-        addr = self.field_address(self.GET_B)
+        v = self.field_value(GET_A)
+        addr = self.field_address(GET_B)
         if None in [v, addr]:
             self.violated = True
             return
         self.memory[addr] = v
 
     def add(self):
-        x1, x2, addr = self.field_value(self.GET_A), self.field_value(self.GET_B), self.field_address(self.GET_B)
+        x1, x2, addr = self.field_value(GET_A), self.field_value(GET_B), self.field_address(GET_B)
         if (None in [x1, x2, addr]):
             self.violated = True
             return
@@ -169,7 +174,7 @@ class Core:
         self.memory[addr] = sum
 
     def sub(self):
-        x1, x2, addr = self.field_value(self.GET_A), self.field_value(self.GET_B), self.field_address(self.GET_B)
+        x1, x2, addr = self.field_value(GET_A), self.field_value(GET_B), self.field_address(GET_B)
         if (None in [x1, x2, addr]):
             self.violated = True
             return
@@ -179,10 +184,50 @@ class Core:
             
         self.memory[addr] = diff
 
+    def jmp(self):
+        addr = self.field_address(GET_B)
+        if addr is None:
+            self.violated = True
+            return
+        self.jumping = True
+        self.cur.ip = addr
 
+    def jmz(self):
+        a, addr = self.field_value(GET_A), self.field_address(GET_B)
+        if (None in [a, addr]):
+            self.violated = True
+            return
+        if (a == 0):
+            self.jumping = True
+            self.cur.ip = addr
 
+    def djz(self):
+        l_a, addr = self.field_address(GET_A), self.field_address(GET_B)
+        if (None in [l_a, addr]):
+            self.violated = True
+            return
 
+        a = self.memory[l_a]
 
+        # decrement a
+        a -= 1
+        if (a < 0):
+            a += (1 << 12)
+        self.memory[l_a] = a
+
+        if (a == 0):
+            self.jumping = True
+            self.cur.ip = addr
+
+    def cmp(self):
+        a, b = self.field_value(GET_A), self.field_value(GET_B)
+        if (None in [a, b]):
+            self.violated = True
+            return
+        if (a != b):
+            self.jumping = True
+            # skip next instruction
+            self.cur.incr(2)
 
 while True:
     time.sleep(0.01)
