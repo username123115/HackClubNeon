@@ -103,6 +103,16 @@ class Core:
         # Executed a bad instruction?
         self.violated = False
 
+        self.instructions = {
+            1: self.mov,
+            2: self.add,
+            3: self.sub,
+            4: self.jmp,
+            5: self.jmz,
+            6: self.djz,
+            7: self.cmp
+        }
+
     # Gets address specified by relative or indirect 
     def field_address(self, get_a = GET_A):
         mode = self.instruction.get_mode(get_a)
@@ -134,8 +144,6 @@ class Core:
         else:
             return None
 
-        
-
     def update(self):
         if self.run_a:
             self.cur = self.ip_a
@@ -143,6 +151,13 @@ class Core:
             self.cur = self.ip_b
 
         self.instruction = Instruction(self.memory[self.cur.ip])
+
+        self.a = self.field_value(GET_A)
+        self.b = self.field_value(GET_B)
+
+        self.aa = self.field_address(GET_A)
+        self.ab = self.field_address(GET_B)
+
 
         #TODO: Write win/lose logic
         if self.violated:
@@ -158,15 +173,15 @@ class Core:
         self.run_a = not self.run_a
 
     def mov(self):
-        v = self.field_value(GET_A)
-        addr = self.field_address(GET_B)
+        v = self.a
+        addr = self.ab
         if None in [v, addr]:
             self.violated = True
             return
         self.memory[addr] = v
 
     def add(self):
-        x1, x2, addr = self.field_value(GET_A), self.field_value(GET_B), self.field_address(GET_B)
+        x1, x2, addr = self.a, self.b, self.ab
         if (None in [x1, x2, addr]):
             self.violated = True
             return
@@ -174,7 +189,7 @@ class Core:
         self.memory[addr] = sum
 
     def sub(self):
-        x1, x2, addr = self.field_value(GET_A), self.field_value(GET_B), self.field_address(GET_B)
+        x1, x2, addr = self.a, self.b, self.ab
         if (None in [x1, x2, addr]):
             self.violated = True
             return
@@ -185,7 +200,7 @@ class Core:
         self.memory[addr] = diff
 
     def jmp(self):
-        addr = self.field_address(GET_B)
+        addr = self.ab
         if addr is None:
             self.violated = True
             return
@@ -193,7 +208,7 @@ class Core:
         self.cur.ip = addr
 
     def jmz(self):
-        a, addr = self.field_value(GET_A), self.field_address(GET_B)
+        a, addr = self.a, self.ab
         if (None in [a, addr]):
             self.violated = True
             return
@@ -202,7 +217,7 @@ class Core:
             self.cur.ip = addr
 
     def djz(self):
-        l_a, addr = self.field_address(GET_A), self.field_address(GET_B)
+        l_a, addr = self.aa, self.ab
         if (None in [l_a, addr]):
             self.violated = True
             return
@@ -220,7 +235,7 @@ class Core:
             self.cur.ip = addr
 
     def cmp(self):
-        a, b = self.field_value(GET_A), self.field_value(GET_B)
+        a, b = self.a, self.b
         if (None in [a, b]):
             self.violated = True
             return
