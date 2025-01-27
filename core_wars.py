@@ -16,25 +16,29 @@ display = PyGameDisplay(width=64 * SCALE, height=32 * SCALE)
 
 root = displayio.Group(scale = SCALE)
 
-ALLOC_X = 64
-ALLOC_Y = 25
-
-CORE_SIZE = ALLOC_X * ALLOC_Y
-
 A_ACTIVE = 0xb36b30
 A_INACTIVE = 0xab7549
 
 B_ACTIVE = 0x2e6ab3
 B_INACTIVE = 0x4d6c91
 
+COLOR_A = 1
+COLOR_B = 2
+
+INSTRUCTION_COLOR_OFFSET = 2
+
+INITIALIZED_DATA_COLOR_OFFSET = INSTRUCTION_COLOR_OFFSET + 8
+# grids can alternate colors everytime they've been written
+INITIALIZED_DATA_COLOR_COUNT = 2
+
 
 consoleA = label.Label(font, text = ">", color = A_ACTIVE)
 consoleA.x = 5
-consoleA.y = 32 - 7
+consoleA.y = 32 - 12
 
 consoleB = label.Label(font, text = ">", color = B_INACTIVE)
-consoleB.x = 35
-consoleB.y = 32 - 7
+consoleB.x = 5
+consoleB.y = 32 - 5
 
 
 colors = 0x50CE99, 0x4BD2C7, 0xFF531F, 0xFB2335, 0xF6287E, 0xF22CC0, 0xDD31ED, 0x9E35E9, 0x643AE4, 0x3E4BE0, 0x4382DB, 0x47B3D7
@@ -42,9 +46,14 @@ core_palette = displayio.Palette(len(colors))
 for i, color in enumerate(colors):
     core_palette[i] = color
 
-core_bitmap = displayio.Bitmap(width = 64, height = 25, value_count = len(colors))
+background_palette = displayio.Palette(1)
+background_palette[0] = 0x202025
+
+core_bitmap = displayio.Bitmap(width = 64, height = 16, value_count = len(colors))
+background = displayio.Bitmap(width = 64, height = 32 - core_bitmap.height, value_count = 1)
 
 core_tile = displayio.TileGrid(core_bitmap, pixel_shader = core_palette)
+background_tile = displayio.TileGrid(background, pixel_shader = background_palette, y = core_bitmap.height)
 
 #following the corewar suggestions
 # number of bits:   4      2     2  12  12
@@ -52,6 +61,7 @@ core_tile = displayio.TileGrid(core_bitmap, pixel_shader = core_palette)
 
 
 root.append(core_tile)
+root.append(background_tile)
 root.append(consoleA)
 root.append(consoleB)
 
@@ -87,10 +97,10 @@ class IP:
         self.size = core_size
 
     def incr(self, value):
-        self.ip = ((self.ip + value) % LIMIT) % core_size
+        self.ip = ((self.ip + value) % LIMIT) % self.size
 
     def get_incr(self, value):
-        return ((self.ip + value) % LIMIT) % core_size
+        return ((self.ip + value) % LIMIT) % self.size
 
 
 class Core:
@@ -110,7 +120,7 @@ class Core:
 
         self.ip_a = IP(self.length)
         self.ip_b = IP(self.length)
-        self.cur = ip_a
+        self.cur = self.ip_a
         self.run_a = True
 
         self.instruction = None
@@ -169,9 +179,58 @@ class Core:
         else:
             mnemonic = "???"
         modes = "# @?"
-        a = modes[self.instruction.mode_a] + str(self.instruction.a)
-        b = modes[self.instruction.mode_b] + str(self.instruction.b)
-        return f"{mnemonic} {a} {b}"
+        fa = self.instruction.a
+        fb = self.instruction.b
+        #dumb heuristic for detecting negative integers
+        if (fa - LIMIT) > -128:
+            fa = fa - LIMIT
+        if (fb - LIMIT) > -128:
+            fb = fb - LIMIT
+
+        a = modes[self.instruction.mode_a] + str(fa)
+        b = modes[self.instruction.mode_b] + str(fb)
+        r = f"{mnemonic} {a} {b}"
+        return r
+
+    def load_players(self, pa, pb):
+        off_a = pa[0]
+        ins_a = pa[1:]
+        off_b = pb[0]
+        ins_b =  pb[1:]
+
+        if (len(ins_a) + len(ins_b)) >= self.length:
+            raise ValueError("Programs loaded exceed maximum core memory")
+
+        load_a = random.randrange(self.length)
+        self.ip_a.ip = (load_a + off_a) % self.length
+        self.load_memory(load_a, ins_a)
+
+        remaining = (self.length - len(ins_a)) - len(ins_b)
+        load_b = (load_a + len(ins_a) + random.randrange(remaining)) % self.length
+        self.ip_b.ip = (load_b + off_b) % self.length
+        self.load_memory(load_b, ins_b)
+
+    def load_memory(self, base, instructions):
+        for i, raw in enumerate(instructions):
+            addr = (base + i) % self.length
+            ins = Instruction(raw)
+            if (ins.opcode not in self.instructions) and (ins.opcode):
+                raise ValueError(f"Loaded bad instruction {ins.opcode}")
+
+            self.memory[addr] = raw
+            self.bitmap[addr] = ins.opcode + INSTRUCTION_COLOR_OFFSET
+
+    # data is set, update the bitmap
+    def set_map(self, addr):
+        value = self.bitmap[addr]
+        if value < INITIALIZED_DATA_COLOR_OFFSET:
+            self.bitmap[addr] = INITIALIZED_DATA_COLOR_OFFSET
+        else:
+            off = value - INITIALIZED_DATA_COLOR_OFFSET
+            new_off = (off + 1) % INITIALIZED_DATA_COLOR_COUNT
+            self.bitmap[addr] = INITIALIZED_DATA_COLOR_OFFSET + new_off
+
+
 
     def update(self):
         if self.run_a:
@@ -181,14 +240,24 @@ class Core:
 
         self.instruction = Instruction(self.memory[self.cur.ip])
 
-        self.a = self.field_value(GET_A)
-        self.b = self.field_value(GET_B)
+        self.a = self.field_value(self.GET_A)
+        self.b = self.field_value(self.GET_B)
 
-        self.aa = self.field_address(GET_A)
-        self.ab = self.field_address(GET_B)
+        self.aa = self.field_address(self.GET_A)
+        self.ab = self.field_address(self.GET_B)
 
         if self.instruction.opcode in self.instructions:
             text = self.dissasemble()
+            if self.run_a:
+                self.text_a.text = text
+                self.text_a.color = A_ACTIVE
+                self.text_b.color = B_INACTIVE
+            else:
+                self.text_b.text = text
+                self.text_a.color = A_INACTIVE
+                self.text_b.color = B_ACTIVE
+
+
             self.instructions[self.instruction.opcode]()
 
         else:
@@ -217,6 +286,7 @@ class Core:
             self.violated = True
             return
         self.memory[addr] = v
+        self.set_map(addr)
 
     def add(self):
         x1, x2, addr = self.a, self.b, self.ab
@@ -225,6 +295,7 @@ class Core:
             return
         sum = (x1 + x2) % LIMIT
         self.memory[addr] = sum
+        self.set_map(addr)
 
     def sub(self):
         x1, x2, addr = self.a, self.b, self.ab
@@ -236,6 +307,7 @@ class Core:
         diff = (x2 + complement) % LIMIT
             
         self.memory[addr] = diff
+        self.set_map(addr)
 
     def jmp(self):
         addr = self.ab
@@ -268,6 +340,7 @@ class Core:
         a %= LIMIT
 
         self.memory[l_a] = a
+        self.set_map(l_a)
 
         if (a == 0):
             self.jumping = True
@@ -282,14 +355,31 @@ class Core:
             self.jumping = True
             # skip next instruction
             self.cur.incr(2)
+dwarf = [0x1, 0x1000000, 0x21004fff, 0x12000ffe, 0x41000ffe]
+
+
+core = Core(core_bitmap, consoleA, consoleB)
+core.load_players(dwarf, dwarf)
+
+end = time.monotonic()
+accum = 0
 
 while True:
-    time.sleep(0.01)
+    begin = time.monotonic()
+    dt = begin - end
+    accum += dt
+
+    if (accum >= 0.2):
+        accum = 0
+        core.update()
+
 
     for event in pygame.event.get():
         if event.type == pygame.QUIT:
             pygame.quit()
             exit()
+    end = time.monotonic()
+    time.sleep(0.01)
 
 
 
