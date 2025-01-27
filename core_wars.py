@@ -55,6 +55,7 @@ root.append(core_tile)
 root.append(consoleA)
 root.append(consoleB)
 
+LIMIT = 1 << 12
 
 display.show(root)
 class Instruction:
@@ -86,10 +87,10 @@ class IP:
         self.size = core_size
 
     def incr(self, value):
-        self.ip = (self.ip + value) % core_size
+        self.ip = ((self.ip + value) % LIMIT) % core_size
 
     def get_incr(self, value):
-        return (self.ip + value) % core_size
+        return ((self.ip + value) % LIMIT) % core_size
 
 
 class Core:
@@ -138,7 +139,7 @@ class Core:
         elif (mode == 2):
             next_addr = self.cur.get_incr(field)
             val = self.memory[next_addr]
-            return (next_addr + val) % self.length
+            return ((next_addr + val) % LIMIT) % self.length
         else:
             return None
 
@@ -154,7 +155,7 @@ class Core:
         elif (mode == 2):
             next_addr = self.cur.get_incr(field)
             val = self.memory[next_addr]
-            second_addr = (next_addr + val) % self.length
+            second_addr = ((next_addr + val) % LIMIT) % self.length
             return self.memory[second_addr]
         else:
             return None
@@ -222,7 +223,7 @@ class Core:
         if (None in [x1, x2, addr]):
             self.violated = True
             return
-        sum = x1 + x2
+        sum = (x1 + x2) % LIMIT
         self.memory[addr] = sum
 
     def sub(self):
@@ -230,9 +231,9 @@ class Core:
         if (None in [x1, x2, addr]):
             self.violated = True
             return
-        diff = x2 - x1
-        if (diff < 0):
-            diff += (1 << 12)
+
+        complement = LIMIT - x1
+        diff = (x2 + complement) % LIMIT
             
         self.memory[addr] = diff
 
@@ -262,9 +263,10 @@ class Core:
         a = self.memory[l_a]
 
         # decrement a
-        a -= 1
-        if (a < 0):
-            a += (1 << 12)
+        negative = LIMIT - 1
+        a += negative
+        a %= LIMIT
+
         self.memory[l_a] = a
 
         if (a == 0):
