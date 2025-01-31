@@ -12,6 +12,10 @@ The map consists of 1024 green pixels originally, that eventually get populated 
 
 To run it in the Neon editor first paste the contents of [core_wars.py](./core_wars.py) into the neon editor, and then upload [5x7.bdf](./assets/5x7.bdf)
 
+### Example ###
+
+![example of this program running](./example.png)
+
 
 
 ## XKCD Thumbnails ##
