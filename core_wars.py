@@ -35,7 +35,7 @@ else:
     addr_pins=[board.A5, board.A4, board.A3, board.A2],
     clock_pin=board.D13, latch_pin=board.D0, output_enable_pin=board.D1)
     display = framebufferio.FramebufferDisplay(matrix, auto_refresh=False)
-    display.auto_refresh = True
+    #display.auto_refresh = True
 
     font = bitmap_font.load_font("5x7.bdf")
 
@@ -440,14 +440,21 @@ core.load_players(dwarf, dwarf)
 end = time.monotonic()
 accum = 0
 
+
+
 while True:
     begin = time.monotonic()
     dt = begin - end
     accum += dt
 
+    
+
     if (accum >= 0.05):
+        print(accum)
         accum = 0
         core.update()
+        if not USE_PYGAME:
+            display.refresh()
 
 
     if USE_PYGAME:
@@ -456,4 +463,6 @@ while True:
                 pygame.quit()
                 exit()
     end = time.monotonic()
+    
     time.sleep(0.01)
+
